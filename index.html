@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Quest</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/skulpt"></script>
+    <script src="https://cdn.jsdelivr.net/npm/skulpt-stdlib"></script>
+    <style>
+        body {
+            background-color: #ff0000;
+            color: white;
+            text-align: center;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            margin: 0;
+        }
+        #challenge-box {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            color: black;
+            padding: 15px;
+            border-radius: 10px;
+            display: none;
+            width: 350px;
+            text-align: left;
+        }
+        textarea {
+            width: 100%;
+            height: 80px;
+        }
+        button {
+            background-color: red;
+            color: white;
+            padding: 8px;
+            border: none;
+            cursor: pointer;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+    <div id="challenge-box">
+        <p id="challenge-text">Solve this Python challenge:</p>
+        <textarea id="codeInput" placeholder="Enter Python code here..."></textarea>
+        <button onclick="checkAnswer()">Submit</button>
+        <p id="output"></p>
+    </div>
+    <script>
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            physics: {
+                default: "arcade",
+                arcade: { gravity: { y: 500 }, debug: false }
+            },
+            scene: { preload, create, update }
+        };
+
+        let player, cursors, platforms, coins, enemies;
+        let score = 0;
+        let scoreText;
+        let currentChallengeIndex = 0;
+        let challenges = [
+            { question: "Print 'Hello, World!'", solution: "print('Hello, World!')" },
+            { question: "Define a function that returns the sum of two numbers.", solution: "def add(a, b): return a + b" }
+        ];
+        let isAnswering = false;
+
+        const game = new Phaser.Game(config);
+
+        function preload() {
+            this.load.image("background", "https://i.imgur.com/4nK6HfB.png"); // Placeholder background
+            this.load.image("ground", "https://i.imgur.com/3pJrDyo.png"); // Placeholder ground
+            this.load.image("player", "https://i.imgur.com/O3Uvc5Q.png"); // Placeholder player
+            this.load.image("coin", "https://i.imgur.com/H6EyNwC.png"); // Placeholder coin
+            this.load.image("enemy", "https://i.imgur.com/8kVO24z.png"); // Placeholder enemy
+        }
+
+        function create() {
+            this.add.image(400, 300, "background").setScale(1.5);
+            
+            platforms = this.physics.add.staticGroup();
+            platforms.create(400, 580, "ground").setScale(2).refreshBody();
+
+            player = this.physics.add.sprite(100, 450, "player");
+            player.setBounce(0.2);
+            player.setCollideWorldBounds(true);
+            
+            this.physics.add.collider(player, platforms);
+            cursors = this.input.keyboard.createCursorKeys();
+            
+            coins = this.physics.add.group({
+                key: "coin",
+                repeat: 5,
+                setXY: { x: 200, y: 0, stepX: 120 }
+            });
+
+            coins.children.iterate((coin) => {
+                coin.setBounceY(Phaser.Math.FloatBetween(0.4, 0.8));
+            });
+
+            enemies = this.physics.add.group();
+            let enemy = enemies.create(600, 520, "enemy");
+            enemy.setBounce(1);
+            enemy.setVelocityX(100);
+            enemy.setCollideWorldBounds(true);
+
+            this.physics.add.collider(coins, platforms);
+            this.physics.add.collider(enemies, platforms);
+            this.physics.add.overlap(player, coins, collectCoin, null, this);
+            this.physics.add.collider(player, enemies, hitEnemy, null, this);
+
+            scoreText = this.add.text(16, 16, "Score: 0", { fontSize: "24px", fill: "#fff" });
+
+            showChallenge();
+        }
+
+        function update() {
+            if (!isAnswering) {
+                if (cursors.left.isDown) {
+                    player.setVelocityX(-160);
+                } else if (cursors.right.isDown) {
+                    player.setVelocityX(160);
+                } else {
+                    player.setVelocityX(0);
+                }
+                if (cursors.up.isDown && player.body.touching.down) {
+                    player.setVelocityY(-400);
+                }
+            }
+        }
+
+        function collectCoin(player, coin) {
+            coin.disableBody(true, true);
+            score += 10;
+            scoreText.setText("Score: " + score);
+        }
+
+        function hitEnemy(player, enemy) {
+            showChallenge();
+        }
+
+        function showChallenge() {
+            isAnswering = true;
+            document.getElementById("challenge-box").style.display = "block";
+            document.getElementById("challenge-text").innerText = "Solve: " + challenges[currentChallengeIndex].question;
+        }
+
+        function checkAnswer() {
+            let code = document.getElementById("codeInput").value;
+
+            Sk.configure({ output: (text) => document.getElementById("output").innerText = text });
+
+            Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("<stdin>", false, code, true))
+                .then(() => {
+                    if (code.trim() === challenges[currentChallengeIndex].solution) {
+                        document.getElementById("output").innerText = "Correct!";
+                        document.getElementById("challenge-box").style.display = "none";
+                        currentChallengeIndex++;
+                        isAnswering = false;
+
+                        enemies.children.iterate((enemy) => {
+                            enemy.destroy();
+                        });
+
+                        if (currentChallengeIndex >= challenges.length) {
+                            alert("You completed all challenges!");
+                        }
+                    } else {
+                        document.getElementById("output").innerText = "Try again!";
+                    }
+                })
+                .catch((err) => {
+                    document.getElementById("output").innerText = "Error: " + err.toString();
+                });
+        }
+    </script>
+</body>
+</html>
